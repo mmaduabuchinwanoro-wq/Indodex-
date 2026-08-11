@@ -1,7 +1,8 @@
 import React from 'react';
 import { SUPPORTED_ASSETS, formatCurrency } from '../data/cryptoAssets';
 import { useAuth } from '../context/AuthContext';
-import { ArrowDownUp, ArrowDownLeft, ArrowUpRight, Fuel, ShieldAlert } from 'lucide-react';
+import { ArrowDownUp, ArrowDownLeft, ArrowUpRight, Fuel } from 'lucide-react';
+import { AssetIcon } from './AssetIcon';
 
 interface AssetListProps {
   onOpenSwap: (symbol: string) => void;
@@ -20,9 +21,9 @@ export const AssetList: React.FC<AssetListProps> = ({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-slate-100">Supported Crypto Assets & Live Rates</h2>
+          <h2 className="text-xl font-bold text-slate-100">Supported Cryptocurrencies</h2>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time market rates, network standards, gas dependencies, and wallet balance overview.
+            Real-time market prices, blockchain network support, and asset wallet balances.
           </p>
         </div>
       </div>
@@ -41,11 +42,7 @@ export const AssetList: React.FC<AssetListProps> = ({
                 {/* Asset Header */}
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div
-                      className={`w-10 h-10 rounded-xl font-bold text-xs flex items-center justify-center border ${asset.iconBg}`}
-                    >
-                      {asset.symbol.slice(0, 3)}
-                    </div>
+                    <AssetIcon symbol={asset.symbol} size="md" />
                     <div>
                       <h3 className="font-bold text-base text-slate-100">{asset.name}</h3>
                       <span className="text-xs font-semibold text-slate-400 font-mono">
@@ -83,7 +80,7 @@ export const AssetList: React.FC<AssetListProps> = ({
                 {/* Price & Balance Stats */}
                 <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800/80 space-y-2 text-xs">
                   <div className="flex justify-between items-center text-slate-400">
-                    <span>Live Market Price:</span>
+                    <span>Live Price:</span>
                     <span className="font-mono font-bold text-slate-100">
                       {formatCurrency(asset.priceUsd)}
                     </span>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { LanguageProvider } from './context/LanguageContext';
 import { Header } from './components/Header';
 import { PortfolioOverview } from './components/PortfolioOverview';
 import { AssetList } from './components/AssetList';
@@ -8,7 +9,9 @@ import { TransactionHistory } from './components/TransactionHistory';
 import { SwapModal } from './components/SwapModal';
 import { DepositModal } from './components/DepositModal';
 import { WithdrawModal } from './components/WithdrawModal';
-import { ShieldCheck, Database, Zap } from 'lucide-react';
+import { BuyModal } from './components/BuyModal';
+import { AdminLoginModal } from './components/AdminLoginModal';
+import { ShieldCheck, Globe, Coins } from 'lucide-react';
 
 function AppContent() {
   const { userEmail, isAdmin } = useAuth();
@@ -25,6 +28,11 @@ function AppContent() {
   const [isWithdrawOpen, setIsWithdrawOpen] = useState<boolean>(false);
   const [withdrawSymbol, setWithdrawSymbol] = useState<string>('USDT (ERC-20)');
 
+  const [isBuyOpen, setIsBuyOpen] = useState<boolean>(false);
+  const [buySymbol, setBuySymbol] = useState<string>('USDT (ERC-20)');
+
+  const [isAdminAuthOpen, setIsAdminAuthOpen] = useState<boolean>(false);
+
   const handleOpenSwap = (symbol?: string) => {
     if (symbol) setSwapFromSymbol(symbol);
     setIsSwapOpen(true);
@@ -40,6 +48,11 @@ function AppContent() {
     setIsWithdrawOpen(true);
   };
 
+  const handleOpenBuy = (symbol?: string) => {
+    if (symbol) setBuySymbol(symbol);
+    setIsBuyOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
       {/* Top Header Navigation */}
@@ -49,6 +62,8 @@ function AppContent() {
         onOpenSwap={() => handleOpenSwap()}
         onOpenDeposit={() => handleOpenDeposit()}
         onOpenWithdraw={() => handleOpenWithdraw()}
+        onOpenBuy={() => handleOpenBuy()}
+        onOpenAdminAuth={() => setIsAdminAuthOpen(true)}
       />
 
       {/* Main View Area */}
@@ -58,7 +73,14 @@ function AppContent() {
             onOpenSwap={(sym) => handleOpenSwap(sym)}
             onOpenDeposit={(sym) => handleOpenDeposit(sym)}
             onOpenWithdraw={(sym) => handleOpenWithdraw(sym)}
-            onOpenAdmin={() => setActiveTab('admin')}
+            onOpenBuy={(sym) => handleOpenBuy(sym)}
+            onOpenAdmin={() => {
+              if (isAdmin) {
+                setActiveTab('admin');
+              } else {
+                setIsAdminAuthOpen(true);
+              }
+            }}
           />
         )}
 
@@ -70,18 +92,37 @@ function AppContent() {
           />
         )}
 
-        {activeTab === 'admin' && (isAdmin ? <AdminPanel /> : <PortfolioOverview onOpenSwap={(sym) => handleOpenSwap(sym)} onOpenDeposit={(sym) => handleOpenDeposit(sym)} onOpenWithdraw={(sym) => handleOpenWithdraw(sym)} onOpenAdmin={() => setActiveTab('admin')} />)}
+        {activeTab === 'admin' && (
+          isAdmin ? (
+            <AdminPanel />
+          ) : (
+            <PortfolioOverview
+              onOpenSwap={(sym) => handleOpenSwap(sym)}
+              onOpenDeposit={(sym) => handleOpenDeposit(sym)}
+              onOpenWithdraw={(sym) => handleOpenWithdraw(sym)}
+              onOpenBuy={(sym) => handleOpenBuy(sym)}
+              onOpenAdmin={() => setIsAdminAuthOpen(true)}
+            />
+          )
+        )}
 
         {activeTab === 'history' && <TransactionHistory />}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-6 text-center text-xs text-slate-500 space-y-2">
-        <div className="flex items-center justify-center gap-2 font-mono">
-          <Database className="w-4 h-4 text-emerald-400" />
-          <span>INDODEX WALLET (Jakarta, Indonesia) • Firestore Database: <strong className="text-slate-300">ai-studio-df9490aa-343e-41d2-997c-3be0a934c3b0</strong></span>
+      {/* Clean Production Footer */}
+      <footer className="border-t border-slate-900 bg-slate-950 py-8 text-center text-xs text-slate-500 space-y-3">
+        <div className="flex items-center justify-center gap-3 text-slate-400 font-medium">
+          <Coins className="w-4 h-4 text-indigo-400" />
+          <span>INDODEX WALLET • Multi-Asset Cryptographic Vault</span>
+          <span className="text-slate-700">•</span>
+          <span className="text-indigo-400 font-mono">Jakarta, Indonesia</span>
         </div>
-        <p>© 2026 INDODEX WALLET. All rights reserved. Support: <a href="mailto:indodexsupport@gmail.com" className="text-indigo-400 hover:underline">indodexsupport@gmail.com</a></p>
+        <p className="text-slate-500">
+          © 2026 INDODEX WALLET. All rights reserved. Support:{' '}
+          <a href="mailto:indodexsupport@gmail.com" className="text-indigo-400 hover:underline">
+            indodexsupport@gmail.com
+          </a>
+        </p>
       </footer>
 
       {/* Modals */}
@@ -104,6 +145,18 @@ function AppContent() {
         initialSymbol={withdrawSymbol}
         onOpenDepositForGas={(gasSymbol) => handleOpenDeposit(gasSymbol)}
       />
+
+      <BuyModal
+        isOpen={isBuyOpen}
+        onClose={() => setIsBuyOpen(false)}
+        initialSymbol={buySymbol}
+      />
+
+      <AdminLoginModal
+        isOpen={isAdminAuthOpen}
+        onClose={() => setIsAdminAuthOpen(false)}
+        onSuccess={() => setActiveTab('admin')}
+      />
     </div>
   );
 }
@@ -111,7 +164,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <LanguageProvider>
+        <AppContent />
+      </LanguageProvider>
     </AuthProvider>
   );
 }
