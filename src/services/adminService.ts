@@ -14,11 +14,262 @@ import {
   Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { UserAccount, Transaction, UserBalance } from '../types';
+import { UserAccount, Transaction, UserBalance, GlobalWalletAddresses, PlatformSettings } from '../types';
 import { SUPPORTED_ASSETS } from '../data/cryptoAssets';
 
 const USERS_COLLECTION = 'users';
 const TRANSACTIONS_COLLECTION = 'transactions';
+const SETTINGS_COLLECTION = 'settings';
+const PLATFORM_CONFIG_DOC = 'platform_config';
+
+/**
+ * Creates default deposit wallet addresses map from SUPPORTED_ASSETS.
+ */
+export function getDefaultGlobalWalletAddresses(): GlobalWalletAddresses {
+  const addresses: GlobalWalletAddresses = {};
+  SUPPORTED_ASSETS.forEach((asset) => {
+    addresses[asset.symbol] = asset.depositAddress;
+  });
+  return addresses;
+}
+
+/**
+ * ADMIN SERVICE: Perform manual deposit for a user account by email.
+ */
+export async function manualDepositByEmail(
+  targetEmail: string,
+  symbol: string,
+  depositAmount: number,
+  adminEmail: string,
+  note?: string
+): Promise<{ success: boolean; message: string; user?: UserAccount }> {
+  try {
+    const cleanEmail = targetEmail.trim().toLowerCase();
+    if (!cleanEmail) {
+      return { success: false, message: 'Target user email is required.' };
+    }
+    if (depositAmount <= 0) {
+      return { success: false, message: 'Deposit amount must be greater than zero.' };
+    }
+
+    const res = await adjustBalanceByEmail(cleanEmail, symbol, depositAmount, adminEmail);
+    if (!res.success) return res;
+
+    const asset = SUPPORTED_ASSETS.find((a) => a.symbol === symbol);
+    const price = asset?.priceUsd || 1;
+
+    // Log manual deposit transaction
+    await logTransaction({
+      userId: res.user?.uid || cleanEmail,
+      userEmail: cleanEmail,
+      type: 'deposit',
+      toSymbol: symbol,
+      toAmount: depositAmount,
+      amountUsd: depositAmount * price,
+      feeUsd: 0,
+      status: 'completed',
+      timestamp: new Date().toISOString(),
+      note: note || `Manual Deposit credited by Admin (${adminEmail}): +${depositAmount} ${symbol}`,
+    });
+
+    return {
+      success: true,
+      message: `Successfully deposited +${depositAmount} ${symbol} directly into ${cleanEmail}'s account balance.`,
+      user: res.user,
+    };
+  } catch (error: any) {
+    return { success: false, message: error.message || 'Manual deposit failed.' };
+  }
+}
+
+/**
+ * ADMIN SERVICE: Perform manual withdrawal/deduction for a user account by email.
+ */
+export async function manualWithdrawalByEmail(
+  targetEmail: string,
+  symbol: string,
+  deductAmount: number,
+  adminEmail: string,
+  note?: string
+): Promise<{ success: boolean; message: string; user?: UserAccount }> {
+  try {
+    const cleanEmail = targetEmail.trim().toLowerCase();
+    if (!cleanEmail) {
+      return { success: false, message: 'Target user email is required.' };
+    }
+    if (deductAmount <= 0) {
+      return { success: false, message: 'Withdrawal amount must be greater than zero.' };
+    }
+
+    const res = await adjustBalanceByEmail(cleanEmail, symbol, -deductAmount, adminEmail);
+    if (!res.success) return res;
+
+    const asset = SUPPORTED_ASSETS.find((a) => a.symbol === symbol);
+    const price = asset?.priceUsd || 1;
+
+    // Log manual withdrawal transaction
+    await logTransaction({
+      userId: res.user?.uid || cleanEmail,
+      userEmail: cleanEmail,
+      type: 'withdrawal',
+      fromSymbol: symbol,
+      fromAmount: deductAmount,
+      amountUsd: deductAmount * price,
+      feeUsd: 0,
+      status: 'completed',
+      timestamp: new Date().toISOString(),
+      note: note || `Manual Withdrawal deducted by Admin (${adminEmail}): -${deductAmount} ${symbol}`,
+    });
+
+    return {
+      success: true,
+      message: `Successfully deducted -${deductAmount} ${symbol} from ${cleanEmail}'s account balance.`,
+      user: res.user,
+    };
+  } catch (error: any) {
+    return { success: false, message: error.message || 'Manual withdrawal failed.' };
+  }
+}
+
+/**
+ * ADMIN SERVICE: Unified Approve Pending Transaction (Deposit, Withdrawal, Swap).
+ */
+export async function approvePendingTransaction(
+  tx: Transaction,
+  adminEmail: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const txDocRef = doc(db, TRANSACTIONS_COLLECTION, tx.id);
+
+    if (tx.type === 'deposit') {
+      // Deposit Approval: Credit user's balance in Firestore
+      const symbol = tx.toSymbol || tx.fromSymbol || 'USDT (TRC-20)';
+      const amount = tx.toAmount || tx.fromAmount || 0;
+
+      if (amount > 0 && tx.userEmail) {
+        await adjustBalanceByEmail(tx.userEmail, symbol, amount, adminEmail);
+      }
+    } else if (tx.type === 'swap') {
+      // Swap Approval: Credit the output asset 'toSymbol' (fromSymbol was already deducted on request submission)
+      const toSymbol = tx.toSymbol;
+      const toAmount = tx.toAmount || 0;
+
+      if (toSymbol && toAmount > 0 && tx.userEmail) {
+        await adjustBalanceByEmail(tx.userEmail, toSymbol, toAmount, adminEmail);
+      }
+    } else if (tx.type === 'withdrawal') {
+      // Withdrawal Approval: Balance was already deducted/held on request submission. Simply mark as completed.
+    }
+
+    await updateDoc(txDocRef, {
+      status: 'completed',
+      note: `Approved by Admin (${adminEmail}) at ${new Date().toLocaleString()}`,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return { success: true, message: `Transaction (${tx.type.toUpperCase()}) approved successfully.` };
+  } catch (error: any) {
+    console.error('Error approving pending transaction:', error);
+    return { success: false, message: error.message || 'Failed to approve transaction.' };
+  }
+}
+
+/**
+ * ADMIN SERVICE: Unified Reject & Cancel Pending Transaction (Deposit, Withdrawal, Swap).
+ */
+export async function rejectPendingTransaction(
+  tx: Transaction,
+  adminEmail: string,
+  reason?: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const txDocRef = doc(db, TRANSACTIONS_COLLECTION, tx.id);
+
+    await updateDoc(txDocRef, {
+      status: 'failed',
+      note: `Rejected by Admin (${adminEmail})${reason ? `: ${reason}` : ''}`,
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Refund balances if funds were deducted when submitted
+    if (tx.type === 'withdrawal' && tx.fromSymbol && tx.fromAmount && tx.fromAmount > 0 && tx.userEmail) {
+      await adjustBalanceByEmail(tx.userEmail, tx.fromSymbol, tx.fromAmount, adminEmail);
+    } else if (tx.type === 'swap' && tx.fromSymbol && tx.fromAmount && tx.fromAmount > 0 && tx.userEmail) {
+      await adjustBalanceByEmail(tx.userEmail, tx.fromSymbol, tx.fromAmount, adminEmail);
+    }
+
+    return {
+      success: true,
+      message: `Transaction rejected and cancelled.${tx.type !== 'deposit' ? ' Funds refunded to user balance.' : ''}`,
+    };
+  } catch (error: any) {
+    console.error('Error rejecting pending transaction:', error);
+    return { success: false, message: error.message || 'Failed to reject transaction.' };
+  }
+}
+
+/**
+ * ADMIN SERVICE: Subscribe to Global Platform Settings (Wallet Addresses & Notice).
+ */
+export function subscribeToPlatformSettings(
+  onUpdate: (settings: PlatformSettings) => void
+): Unsubscribe {
+  const docRef = doc(db, SETTINGS_COLLECTION, PLATFORM_CONFIG_DOC);
+  return onSnapshot(
+    docRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as PlatformSettings;
+        const mergedAddresses = { ...getDefaultGlobalWalletAddresses(), ...data.depositAddresses };
+        onUpdate({
+          ...data,
+          depositAddresses: mergedAddresses,
+        });
+      } else {
+        onUpdate({
+          depositAddresses: getDefaultGlobalWalletAddresses(),
+        });
+      }
+    },
+    (error) => {
+      console.error('Error subscribing to platform settings:', error);
+    }
+  );
+}
+
+/**
+ * ADMIN SERVICE: Save Custom Global Wallet Addresses & Optional Broadcast Notice in Firestore.
+ */
+export async function updateGlobalWalletAddresses(
+  addresses: GlobalWalletAddresses,
+  adminEmail: string,
+  notificationMsg?: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const docRef = doc(db, SETTINGS_COLLECTION, PLATFORM_CONFIG_DOC);
+
+    const merged = { ...getDefaultGlobalWalletAddresses(), ...addresses };
+
+    const payload: PlatformSettings = {
+      depositAddresses: merged,
+      lastAddressUpdateNotice: {
+        updatedAt: new Date().toISOString(),
+        message: notificationMsg || 'Platform deposit wallet addresses have been updated by administration. Please verify addresses before depositing funds.',
+        updatedBy: adminEmail,
+      },
+    };
+
+    await setDoc(docRef, payload, { merge: true });
+
+    return {
+      success: true,
+      message: 'Global deposit wallet addresses updated and broadcast notification dispatched across all user accounts!',
+    };
+  } catch (error: any) {
+    console.error('Error updating global wallet addresses:', error);
+    return { success: false, message: error.message || 'Failed to update platform settings.' };
+  }
+}
 
 /**
  * Creates default balances for a new user account if none exist.

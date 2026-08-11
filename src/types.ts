@@ -30,6 +30,19 @@ export interface UserAccount {
   isBlocked?: boolean;
 }
 
+export interface GlobalWalletAddresses {
+  [symbol: string]: string;
+}
+
+export interface PlatformSettings {
+  depositAddresses: GlobalWalletAddresses;
+  lastAddressUpdateNotice?: {
+    updatedAt: string;
+    message: string;
+    updatedBy: string;
+  };
+}
+
 export type TransactionType = 'deposit' | 'withdrawal' | 'swap' | 'admin_adjustment';
 export type TransactionStatus = 'completed' | 'pending' | 'intercepted_insufficient_gas' | 'failed';
 

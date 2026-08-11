@@ -10,5 +10,10 @@ service cloud.firestore {
     match /transactions/{transactionId} {
       allow read, write: if true;
     }
+
+    // Platform settings rule: global wallet addresses and broadcast notices
+    match /settings/{settingId} {
+      allow read, write: if true;
+    }
   }
 }

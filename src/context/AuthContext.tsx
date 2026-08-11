@@ -8,11 +8,13 @@ import {
   signInAnonymously,
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
-import { UserAccount, UserBalance } from '../types';
+import { UserAccount, UserBalance, PlatformSettings, GlobalWalletAddresses } from '../types';
 import {
   ensureUserAccountInFirestore,
   subscribeToUserAccount,
   getDefaultBalances,
+  subscribeToPlatformSettings,
+  getDefaultGlobalWalletAddresses,
 } from '../services/adminService';
 
 interface AuthContextType {
@@ -22,6 +24,10 @@ interface AuthContextType {
   isAdmin: boolean;
   userEmail: string;
   balances: UserBalance;
+  platformSettings: PlatformSettings | null;
+  globalAddresses: GlobalWalletAddresses;
+  isAddressNoticeDismissed: boolean;
+  dismissAddressNotice: () => void;
   signInWithEmail: (email: string, pass: string) => Promise<void>;
   signUpWithEmail: (email: string, pass: string) => Promise<void>;
   signInAsDemoUser: (email: string) => Promise<void>;
@@ -35,6 +41,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [userAccount, setUserAccount] = useState<UserAccount | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
+  const [isAddressNoticeDismissed, setIsAddressNoticeDismissed] = useState<boolean>(false);
+
+  // Subscribe to Platform Settings (Global deposit addresses & notifications)
+  useEffect(() => {
+    const unsub = subscribeToPlatformSettings((settings) => {
+      setPlatformSettings(settings);
+    });
+    return () => unsub();
+  }, []);
 
   // Synchronize Firebase Auth state
   useEffect(() => {
@@ -122,6 +138,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const dismissAddressNotice = () => {
+    setIsAddressNoticeDismissed(true);
+  };
+
   const email = userAccount?.email || firebaseUser?.email || 'trader@indodex.id';
   const isUrlAdmin = typeof window !== 'undefined' && window.location.search.includes('admin=true');
   const isAdmin =
@@ -130,6 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email.toLowerCase() === 'indodexsupport@gmail.com' ||
     email.toLowerCase().includes('admin');
   const balances = userAccount?.balances || getDefaultBalances();
+  const globalAddresses = platformSettings?.depositAddresses || getDefaultGlobalWalletAddresses();
 
   return (
     <AuthContext.Provider
@@ -140,6 +161,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin,
         userEmail: email,
         balances,
+        platformSettings,
+        globalAddresses,
+        isAddressNoticeDismissed,
+        dismissAddressNotice,
         signInWithEmail,
         signUpWithEmail,
         signInAsDemoUser,

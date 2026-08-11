@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Copy, Check, QrCode, ShieldAlert, ArrowDownLeft } from 'lucide-react';
+import { X, Copy, Check, QrCode, ShieldAlert, ArrowDownLeft, Clock, Send } from 'lucide-react';
 import { SUPPORTED_ASSETS, getAssetBySymbol } from '../data/cryptoAssets';
 import { useAuth } from '../context/AuthContext';
 import { updateBalanceByEmail, logTransaction } from '../services/adminService';
@@ -15,24 +15,56 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   onClose,
   initialSymbol = 'USDT (TRC-20)',
 }) => {
-  const { userEmail, balances, userAccount, refreshAccountData } = useAuth();
+  const { userEmail, balances, userAccount, refreshAccountData, globalAddresses } = useAuth();
   const [symbol, setSymbol] = useState<string>(initialSymbol);
   const [copied, setCopied] = useState<boolean>(false);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
-  const [simulatedAmount, setSimulatedAmount] = useState<string>('0.7');
+  const [simulatedAmount, setSimulatedAmount] = useState<string>('500');
+  const [pendingNotice, setPendingNotice] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const currentAsset = getAssetBySymbol(symbol) || SUPPORTED_ASSETS[1];
+  const liveAddress = globalAddresses[symbol] || currentAsset.depositAddress;
 
   const handleCopyAddress = () => {
-    navigator.clipboard.writeText(currentAsset.depositAddress);
+    navigator.clipboard.writeText(liveAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSimulateDeposit = async () => {
-    const amountToCredit = parseFloat(simulatedAmount) || 100;
+  const handleUserSubmitPendingDeposit = async () => {
+    const amountToCredit = parseFloat(simulatedAmount) || 500;
+    setIsSimulating(true);
+    setPendingNotice(null);
+
+    try {
+      if (userAccount) {
+        await logTransaction({
+          userId: userAccount.uid,
+          userEmail,
+          type: 'deposit',
+          toSymbol: symbol,
+          toAmount: amountToCredit,
+          amountUsd: amountToCredit * currentAsset.priceUsd,
+          feeUsd: 0,
+          status: 'pending',
+          timestamp: new Date().toISOString(),
+          note: `Pending Admin Verification: User notified deposit of ${amountToCredit} ${symbol} to address ${liveAddress.slice(0, 8)}...`,
+        });
+
+        await refreshAccountData();
+        setPendingNotice(`Deposit request of ${amountToCredit} ${symbol} submitted! It is currently in Pending status awaiting admin verification and approval.`);
+      }
+    } catch (err) {
+      console.error('Deposit notification error:', err);
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
+  const handleInstantDirectDeposit = async () => {
+    const amountToCredit = parseFloat(simulatedAmount) || 500;
     setIsSimulating(true);
 
     try {
@@ -52,15 +84,15 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           feeUsd: 0,
           status: 'completed',
           timestamp: new Date().toISOString(),
-          note: `Simulated top-up deposit of ${amountToCredit} ${symbol}`,
+          note: `Instant credited top-up deposit of ${amountToCredit} ${symbol}`,
         });
 
         await refreshAccountData();
-        alert(`Successfully deposited ${amountToCredit} ${symbol}!`);
+        alert(`Successfully credited +${amountToCredit} ${symbol} to your balance!`);
         onClose();
       }
     } catch (err) {
-      console.error('Deposit simulation error:', err);
+      console.error('Direct deposit error:', err);
     } finally {
       setIsSimulating(false);
     }
@@ -90,12 +122,27 @@ export const DepositModal: React.FC<DepositModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-5">
+          {pendingNotice && (
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 space-y-1">
+              <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span>Pending Approval Queue</span>
+              </div>
+              <p className="text-xs text-amber-300/90 leading-relaxed font-mono">
+                {pendingNotice}
+              </p>
+            </div>
+          )}
+
           {/* ASSET SELECTOR */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-300">Select Deposit Asset</label>
             <select
               value={symbol}
-              onChange={(e) => setSymbol(e.target.value)}
+              onChange={(e) => {
+                setSymbol(e.target.value);
+                setPendingNotice(null);
+              }}
               className="w-full bg-slate-950/80 border border-slate-800 text-slate-100 font-semibold text-sm rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 cursor-pointer"
             >
               {SUPPORTED_ASSETS.map((asset) => (
@@ -116,10 +163,15 @@ export const DepositModal: React.FC<DepositModalProps> = ({
             </div>
 
             <div className="w-full space-y-1.5 text-left">
-              <span className="text-xs text-slate-400 font-medium">Your {currentAsset.symbol} Deposit Address:</span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400 font-medium">Your {currentAsset.symbol} Deposit Address:</span>
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  Global Address
+                </span>
+              </div>
               <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl p-2.5">
                 <span className="text-xs font-mono text-emerald-400 truncate flex-1 font-semibold">
-                  {currentAsset.depositAddress}
+                  {liveAddress}
                 </span>
                 <button
                   onClick={handleCopyAddress}
@@ -146,25 +198,32 @@ export const DepositModal: React.FC<DepositModalProps> = ({
             </div>
           </div>
 
-          {/* QUICK TEST SIMULATOR CREDIT */}
+          {/* DEPOSIT ACTION CONTROLS */}
           <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800/80 space-y-3">
             <span className="text-xs font-semibold text-slate-300 block">
-              Direct Top-Up Test Simulator
+              Confirm Sent Deposit Amount
             </span>
             <div className="flex gap-2">
               <input
                 type="number"
                 value={simulatedAmount}
                 onChange={(e) => setSimulatedAmount(e.target.value)}
-                placeholder="Amount to credit..."
-                className="flex-1 bg-slate-900 border border-slate-800 text-slate-100 text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
+                placeholder="Amount sent..."
+                className="flex-1 bg-slate-900 border border-slate-800 text-slate-100 text-xs font-mono rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500"
               />
               <button
-                onClick={handleSimulateDeposit}
+                onClick={handleUserSubmitPendingDeposit}
                 disabled={isSimulating}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs rounded-lg transition-colors flex items-center gap-1.5"
+                className="px-3 py-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 font-semibold text-xs rounded-lg transition-colors flex items-center gap-1 shrink-0"
               >
-                {isSimulating ? 'Crediting...' : `Instant Credit ${symbol}`}
+                <Send className="w-3.5 h-3.5" /> Submit Deposit (Pending)
+              </button>
+              <button
+                onClick={handleInstantDirectDeposit}
+                disabled={isSimulating}
+                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-lg transition-colors flex items-center gap-1 shrink-0"
+              >
+                Instant Credit
               </button>
             </div>
           </div>

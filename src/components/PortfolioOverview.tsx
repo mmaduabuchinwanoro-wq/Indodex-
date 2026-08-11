@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   Sparkles,
   ChevronRight,
+  Bell,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -34,7 +36,7 @@ export const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({
   onOpenBuy,
   onOpenAdmin,
 }) => {
-  const { balances, userEmail, isAdmin } = useAuth();
+  const { balances, userEmail, isAdmin, platformSettings, isAddressNoticeDismissed, dismissAddressNotice } = useAuth();
   const { selectedCountry, t, formatLocalFiat } = useLanguage();
 
   const [showBalance, setShowBalance] = useState<boolean>(true);
@@ -62,6 +64,39 @@ export const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Broadcast Platform Update Notice Banner */}
+      {platformSettings?.lastAddressUpdateNotice && !isAddressNoticeDismissed && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-300 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+              <Bell className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-bold text-xs uppercase tracking-wider text-amber-400">
+                Official Wallet Address Notice
+              </p>
+              <p className="text-xs text-amber-200/90 leading-snug">
+                {platformSettings.lastAddressUpdateNotice.message}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            <button
+              onClick={() => onOpenDeposit()}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition-colors"
+            >
+              View Deposit Addresses
+            </button>
+            <button
+              onClick={dismissAddressNotice}
+              className="p-1.5 text-amber-400 hover:text-amber-200 hover:bg-amber-500/20 rounded-lg transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Mobile-Style Wallet Balance Card */}
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950/80 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
