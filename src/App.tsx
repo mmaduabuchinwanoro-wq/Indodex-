@@ -11,6 +11,7 @@ import { DepositModal } from './components/DepositModal';
 import { WithdrawModal } from './components/WithdrawModal';
 import { BuyModal } from './components/BuyModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
+import { AuthModal } from './components/AuthModal';
 import { ShieldCheck, Globe, Coins } from 'lucide-react';
 
 function AppContent() {
@@ -19,6 +20,8 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<'portfolio' | 'assets' | 'admin' | 'history'>('portfolio');
 
   // Modal controls
+  const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
+
   const [isSwapOpen, setIsSwapOpen] = useState<boolean>(false);
   const [swapFromSymbol, setSwapFromSymbol] = useState<string>('USDT (TRC-20)');
 
@@ -64,6 +67,7 @@ function AppContent() {
         onOpenWithdraw={() => handleOpenWithdraw()}
         onOpenBuy={() => handleOpenBuy()}
         onOpenAdminAuth={() => setIsAdminAuthOpen(true)}
+        onOpenAuth={() => setIsAuthOpen(true)}
       />
 
       {/* Main View Area */}
@@ -126,11 +130,17 @@ function AppContent() {
       </footer>
 
       {/* Modals */}
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+      />
+
       <SwapModal
         isOpen={isSwapOpen}
         onClose={() => setIsSwapOpen(false)}
         initialFromSymbol={swapFromSymbol}
         onOpenDepositForGas={(gasSymbol) => handleOpenDeposit(gasSymbol)}
+        onOpenAuth={() => setIsAuthOpen(true)}
       />
 
       <DepositModal
@@ -144,6 +154,7 @@ function AppContent() {
         onClose={() => setIsWithdrawOpen(false)}
         initialSymbol={withdrawSymbol}
         onOpenDepositForGas={(gasSymbol) => handleOpenDeposit(gasSymbol)}
+        onOpenAuth={() => setIsAuthOpen(true)}
       />
 
       <BuyModal

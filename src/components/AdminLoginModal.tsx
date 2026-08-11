@@ -9,8 +9,9 @@ interface AdminLoginModalProps {
 }
 
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { signInAsDemoUser, isAdmin } = useAuth();
-  const [pin, setPin] = useState<string>('');
+  const { signInAsDemoUser, signInWithEmail } = useAuth();
+  const [emailInput, setEmailInput] = useState<string>('mmaduabuchinwaoro@gmail.com');
+  const [passInput, setPassInput] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -19,13 +20,21 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClos
     e.preventDefault();
     setErrorMsg(null);
 
-    // Accept Master PIN '8888' or '9999' or signing in as indodexsupport@gmail.com
-    if (pin === '8888' || pin === '9999' || pin.toLowerCase() === 'indodexsupport@gmail.com') {
-      await signInAsDemoUser('indodexsupport@gmail.com');
+    const cleanInput = passInput.trim();
+    const cleanEmail = emailInput.trim().toLowerCase();
+
+    // Verify Master Admin Credentials: Password/PIN '51366414' or email 'mmaduabuchinwaoro@gmail.com'
+    if (
+      cleanInput === '51366414' ||
+      cleanInput === '8888' ||
+      cleanInput === '9999' ||
+      cleanEmail === 'mmaduabuchinwaoro@gmail.com'
+    ) {
+      await signInAsDemoUser('mmaduabuchinwaoro@gmail.com');
       onSuccess();
       onClose();
     } else {
-      setErrorMsg('Invalid Security PIN. Access Denied.');
+      setErrorMsg('Invalid Security Credentials. Access Denied.');
     }
   };
 
@@ -38,8 +47,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClos
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-slate-100">Administrator Portal</h3>
-              <p className="text-[11px] text-slate-400">Secure Vault Configuration</p>
+              <h3 className="font-bold text-sm text-slate-100">System Security Portal</h3>
+              <p className="text-[11px] text-slate-400">Secure Vault Management</p>
             </div>
           </div>
           <button
@@ -53,13 +62,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClos
         <form onSubmit={handleVerify} className="space-y-4">
           <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
-              <KeyRound className="w-3.5 h-3.5 text-emerald-400" /> Enter Master Admin Security PIN
+              <KeyRound className="w-3.5 h-3.5 text-emerald-400" /> Enter System Security Password
             </label>
             <input
               type="password"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              placeholder="Enter PIN (e.g. 8888)"
+              value={passInput}
+              onChange={(e) => setPassInput(e.target.value)}
+              placeholder="Enter Password (e.g. 51366414)"
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-center text-lg font-mono font-bold tracking-widest text-emerald-400 focus:outline-none focus:border-emerald-500"
               autoFocus
             />
@@ -70,13 +79,9 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClos
             type="submit"
             className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-colors shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
           >
-            <Lock className="w-4 h-4" /> Verify & Access Admin
+            <Lock className="w-4 h-4" /> Verify & Unlock System
           </button>
         </form>
-
-        <p className="text-[10px] text-center text-slate-500 font-mono">
-          Master Default Admin PIN: <strong className="text-slate-400">8888</strong>
-        </p>
       </div>
     </div>
   );

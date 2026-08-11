@@ -174,6 +174,8 @@ export async function approvePendingTransaction(
   }
 }
 
+export const approvePendingWithdrawal = approvePendingTransaction;
+
 /**
  * ADMIN SERVICE: Unified Reject & Cancel Pending Transaction (Deposit, Withdrawal, Swap).
  */
@@ -573,27 +575,6 @@ export function subscribeToAllTransactions(
     txs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     onUpdate(txs);
   });
-}
-
-/**
- * ADMIN SERVICE: Approve a pending withdrawal transaction.
- */
-export async function approvePendingWithdrawal(
-  txId: string,
-  adminEmail: string
-): Promise<{ success: boolean; message: string }> {
-  try {
-    const txDocRef = doc(db, TRANSACTIONS_COLLECTION, txId);
-    await updateDoc(txDocRef, {
-      status: 'completed',
-      note: `Approved by Admin (${adminEmail}) at ${new Date().toLocaleString()}`,
-      updatedAt: new Date().toISOString(),
-    });
-    return { success: true, message: 'Withdrawal request approved successfully.' };
-  } catch (error: any) {
-    console.error('Error approving withdrawal:', error);
-    return { success: false, message: error.message || 'Failed to approve withdrawal.' };
-  }
 }
 
 /**

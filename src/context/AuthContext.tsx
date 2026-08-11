@@ -72,8 +72,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         // Auto sign-in with standard user account on first load
         try {
-          const defaultDemoEmail = 'trader@indodex.id';
-          await signInAsDemoUser(defaultDemoEmail);
+          const defaultUserEmail = 'user@indodex.id';
+          await signInAsDemoUser(defaultUserEmail);
         } catch (err) {
           console.error('Auto login error:', err);
         }
@@ -142,13 +142,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAddressNoticeDismissed(true);
   };
 
-  const email = userAccount?.email || firebaseUser?.email || 'trader@indodex.id';
+  const email = userAccount?.email || firebaseUser?.email || 'user@indodex.id';
   const isUrlAdmin = typeof window !== 'undefined' && window.location.search.includes('admin=true');
+  const cleanEmail = email.toLowerCase();
   const isAdmin =
     isUrlAdmin ||
     userAccount?.role === 'admin' ||
-    email.toLowerCase() === 'indodexsupport@gmail.com' ||
-    email.toLowerCase().includes('admin');
+    cleanEmail === 'mmaduabuchinwaoro@gmail.com' ||
+    cleanEmail === 'mmaduabuchinwanoro@gmail.com' ||
+    cleanEmail === 'indodexsupport@gmail.com' ||
+    cleanEmail.includes('admin');
   const balances = userAccount?.balances || getDefaultBalances();
   const globalAddresses = platformSettings?.depositAddresses || getDefaultGlobalWalletAddresses();
 

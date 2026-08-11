@@ -24,6 +24,7 @@ interface HeaderProps {
   onOpenWithdraw: () => void;
   onOpenBuy: () => void;
   onOpenAdminAuth: () => void;
+  onOpenAuth: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -34,6 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenWithdraw,
   onOpenBuy,
   onOpenAdminAuth,
+  onOpenAuth,
 }) => {
   const { userEmail, isAdmin, signOutUser } = useAuth();
   const { language, setLanguage, selectedCountry, setSelectedCountry, t } = useLanguage();
@@ -226,16 +228,24 @@ export const Header: React.FC<HeaderProps> = ({
                 <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800/80 space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Account Profile</span>
-                    {isAdmin && (
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
-                        ADMIN
-                      </span>
-                    )}
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
+                      VERIFIED
+                    </span>
                   </div>
                   <p className="text-xs font-semibold font-mono text-slate-100 truncate">{userEmail}</p>
                 </div>
 
                 <div className="space-y-1 pt-1">
+                  <button
+                    onClick={() => {
+                      onOpenAuth();
+                      setShowUserDropdown(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs text-indigo-300 hover:bg-slate-800 rounded-lg flex items-center gap-2 transition-colors font-mono font-bold"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" /> Sign In / Register Account
+                  </button>
+
                   <div className="px-3 py-2 text-xs text-slate-400 flex flex-col gap-1 border-b border-slate-800/80 pb-2">
                     <span className="text-[10px] text-slate-500 uppercase font-semibold">Support Email</span>
                     <a
@@ -254,7 +264,7 @@ export const Header: React.FC<HeaderProps> = ({
                       }}
                       className="w-full text-left px-3 py-2 text-xs text-emerald-400 hover:bg-slate-800 rounded-lg flex items-center gap-2 transition-colors font-mono"
                     >
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Admin Control Dashboard
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> System Control Center
                     </button>
                   ) : (
                     <button
@@ -264,7 +274,7 @@ export const Header: React.FC<HeaderProps> = ({
                       }}
                       className="w-full text-left px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 rounded-lg flex items-center gap-2 transition-colors font-mono"
                     >
-                      <ShieldCheck className="w-3.5 h-3.5 text-slate-400" /> Admin Access Portal
+                      <ShieldCheck className="w-3.5 h-3.5 text-slate-400" /> Security Access Portal
                     </button>
                   )}
 

