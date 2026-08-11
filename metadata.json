@@ -1,0 +1,6 @@
+{
+  "name": "Crypto Exchange & Portfolio Vault",
+  "description": "Secure crypto portfolio, live asset tracking, instant swap & withdrawal engine with admin balance management and Firestore persistence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
