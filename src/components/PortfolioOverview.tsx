@@ -27,7 +27,7 @@ export const PortfolioOverview: React.FC<PortfolioOverviewProps> = ({
   onOpenWithdraw,
   onOpenAdmin,
 }) => {
-  const { balances, userEmail, userAccount } = useAuth();
+  const { balances, userEmail, userAccount, isAdmin } = useAuth();
 
   // Calculate total portfolio net worth
   let totalNetWorthUsd = 0;
